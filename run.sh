@@ -32,7 +32,9 @@ else
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-apt_install() { $SUDO apt-get install -y --no-install-recommends "$@"; }
+# Keep existing config files instead of stopping to ask about them
+readonly APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+apt_install() { $SUDO apt-get install "${APT_OPTS[@]}" --no-install-recommends "$@"; }
 
 # ---------- preflight --------------------------------------------------------
 
@@ -48,7 +50,7 @@ log "Detected ${PRETTY_NAME}"
 
 log "Updating system packages"
 $SUDO apt-get update -y
-$SUDO apt-get upgrade -y
+$SUDO apt-get upgrade "${APT_OPTS[@]}"
 
 log "Installing base tools"
 apt_install ca-certificates curl wget git gnupg lsb-release unzip \
@@ -64,7 +66,11 @@ fi
 if [ "${SKIP_NGINX:-0}" != "1" ]; then
     log "Installing Nginx and Certbot"
     apt_install nginx certbot python3-certbot-nginx
-    $SUDO systemctl enable --now nginx
+    if [ -d /run/systemd/system ]; then
+        $SUDO systemctl enable --now nginx
+    else
+        warn "systemd not running (container?), start nginx manually"
+    fi
 fi
 
 # ---------- node.js ----------------------------------------------------------
@@ -76,7 +82,7 @@ if [ "${SKIP_NODE:-0}" != "1" ]; then
         node_setup="setup_lts.x"
     fi
     log "Installing Node.js (${node_setup})"
-    curl -fsSL "https://deb.nodesource.com/${node_setup}" | $SUDO -E bash -
+    curl -fsSL "https://deb.nodesource.com/${node_setup}" | $SUDO bash -
     apt_install nodejs
 
     log "Installing yarn, pnpm and pm2"
